@@ -7,7 +7,7 @@ public class MainThread
 
         // one ATC thread
         ATC apAtc = new ATC(3);
-        Thread atcThread = new Thread(apAtc, "ATC");
+        Thread atcThread = new Thread(apAtc, "AP_ATC");
         atcThread.start();
 
         // six plane threads
@@ -15,7 +15,7 @@ public class MainThread
         {
             int passengers = (int) (Math.random() * 51);   // random passenger count, 0-50
             Plane plane = new Plane(i, passengers, apAtc);
-            Thread planeThread = new Thread(plane, "Plane-" + i + 1);
+            Thread planeThread = new Thread(plane, "Plane-" + (i + 1));
             planeThread.start();
 
             try
