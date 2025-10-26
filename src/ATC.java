@@ -240,9 +240,9 @@ public class ATC implements Runnable
         synchronized (this)
         {
             gateOccupied[gateNumber - 1] = false;
+            gate.release();
             notifyAll();
         }
-        gate.release();
     }
 
     public void updatePassengersBoarded(int count)
