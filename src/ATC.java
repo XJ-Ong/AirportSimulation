@@ -8,23 +8,28 @@ public class ATC implements Runnable
     private boolean fuelTruckOccupied = false;
     private final Semaphore gate;
     private boolean[] gateOccupied;
-
     private boolean isFinished = false;
+
+    // statistics
     private int passengerBoarded = 0;
-    private int planesRegistered = 0;
+    private int expectedPlanes;
     private int planesServed = 0;
+    private long totalWaitingTime = 0;
+    private long minWaitingTime = Long.MAX_VALUE;
+    private long maxWaitingTime = Long.MIN_VALUE;
 
     // Landing and Departing Queues
     private final Queue<Plane> landingQueue = new LinkedList<>();
     private final Queue<Plane> departingQueue = new LinkedList<>();
 
-    public ATC(int gateCount)
+    public ATC(int gateCount, int expectedPlanes)
     {
         this.gate = new Semaphore(gateCount, true);
         this.gateOccupied = new boolean[gateCount];
+        this.expectedPlanes = expectedPlanes;
     }
 
-    // Landing Queue Management
+    // landing queue management
     public synchronized void requestLanding(Plane plane)
     {
         if(plane.getIsEmergency())
@@ -38,7 +43,7 @@ public class ATC implements Runnable
         notifyAll();
     }
 
-    // Departing Queue Management
+    // departing queue management
     public synchronized void requestDeparting(Plane plane)
     {
         departingQueue.add(plane);
@@ -47,49 +52,60 @@ public class ATC implements Runnable
 
     public synchronized Plane getNextPlane()
     {
-            Plane nextPlane = null;
+        // waiting loop for plane to arrive
+        while (landingQueue.isEmpty() && departingQueue.isEmpty() && !isFinished)
+        {
+            try
+            {
+                wait();
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
 
-            // Waiting loop for plane to arrive
-            while (landingQueue.isEmpty() && departingQueue.isEmpty() && !isFinished)
-            {
-                try
-                {
-                    wait();
-                }
-                catch (InterruptedException e)
-                {
-                    throw new RuntimeException(e);
-                }
-            }
+        // check if all planes are served
+        if (isFinished && landingQueue.isEmpty() && departingQueue.isEmpty())
+        {
+            return null;
+        }
 
-            // prioritise departing
-            if (!departingQueue.isEmpty())
-            {
-                return departingQueue.poll();
-            }
-            else
-            {
-                return landingQueue.poll();
-            }
+        // prioritise departing
+        if (!departingQueue.isEmpty())
+        {
+            return departingQueue.poll();
+        }
+        else
+        {
+            return landingQueue.poll();
+        }
     }
 
     public void handlePlane(Plane plane)
     {
+        if (plane == null)
+        {
+            return;
+        }
+
         // differentiate between landing and departing
         if (plane.getIsLanding())
         {
-            // check gate and runway availability
+            // check gate availability
             synchronized (this)
             {
-                while (gate.availablePermits() == 0 || runwayOccupied)
+                while (gate.availablePermits() == 0)
                 {
-                    System.out.println(Thread.currentThread().getName() + ": Runway or all the gates are occupied");
+                    System.out.println(Thread.currentThread().getName() + ": All the gates are occupied");
                     try
                     {
                         wait();
                     } catch (InterruptedException e)
                     {
-                        throw new RuntimeException(e);
+                        Thread.currentThread().interrupt();
+                        return;
                     }
                 }
                 System.out.println(Thread.currentThread().getName() + ": Runway is cleared");
@@ -108,7 +124,8 @@ public class ATC implements Runnable
                         wait();
                     } catch (InterruptedException e)
                     {
-                        throw new RuntimeException(e);
+                        Thread.currentThread().interrupt();
+                        return;
                     }
                 }
             }
@@ -133,7 +150,8 @@ public class ATC implements Runnable
                 }
                 catch (InterruptedException e)
                 {
-                    throw new RuntimeException(e);
+                    Thread.currentThread().interrupt();
+                    return;
                 }
             }
             runwayOccupied = true;
@@ -163,7 +181,8 @@ public class ATC implements Runnable
                 }
                 catch (InterruptedException e)
                 {
-                    throw new RuntimeException(e);
+                    Thread.currentThread().interrupt();
+                    return;
                 }
             }
             fuelTruckOccupied = true;
@@ -187,19 +206,31 @@ public class ATC implements Runnable
         }
         catch (InterruptedException e)
         {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
+            return -1;
         }
 
         // gets the available gate number
-        int gateNumber = 0;
-        for (int i = 0; i < gateOccupied.length; i ++)
+
+        int gateNumber = -1;
+        synchronized (this)
         {
-            if (!gateOccupied[i])
+            for (int i = 0; i < gateOccupied.length; i++)
             {
-                gateOccupied[i] = true;
-                gateNumber = i + 1;
-                break;
+                if (!gateOccupied[i])
+                {
+                    gateOccupied[i] = true;
+                    gateNumber = i + 1;
+                    break;
+                }
             }
+        }
+
+        //
+        if (gateNumber == -1)
+        {
+            gate.release();
+            return -1;
         }
         return gateNumber;
     }
@@ -209,9 +240,12 @@ public class ATC implements Runnable
         synchronized (this)
         {
             gateOccupied[gateNumber - 1] = false;
-            notifyAll();
         }
         gate.release();
+        synchronized (this)
+        {
+            notifyAll();
+        }
     }
 
     public void updatePassengersBoarded(int count)
@@ -222,15 +256,11 @@ public class ATC implements Runnable
         }
     }
 
-    public synchronized void registerPlane()
-    {
-        this.planesRegistered ++;
-    }
 
     public synchronized void planeFinished()
     {
         this.planesServed ++;
-        if (this.planesServed == this.planesRegistered)
+        if (this.planesServed == this.expectedPlanes)
         {
             this.isFinished = true;
             notifyAll();
@@ -250,6 +280,20 @@ public class ATC implements Runnable
         }
     }
 
+    public void reportWaitingTime(long waitingTime)
+    {
+        this.totalWaitingTime += waitingTime;
+        if (waitingTime < minWaitingTime)
+        {
+            this.minWaitingTime = waitingTime;
+        }
+        if (waitingTime > maxWaitingTime)
+        {
+            this.maxWaitingTime = waitingTime;
+        }
+    }
+
+
     @Override
     public void run()
     {
@@ -259,6 +303,10 @@ public class ATC implements Runnable
         while (!isFinished)
         {
             Plane nextPlane = getNextPlane();
+            if (nextPlane == null)
+            {
+                continue;
+            }
             handlePlane(nextPlane);
         }
         System.out.println(Thread.currentThread().getName() + ": All planes are served");
@@ -270,11 +318,11 @@ public class ATC implements Runnable
         }
         else
         {
-            System.out.println("Minimum plane waiting time  : ");
-            System.out.println("Maximum plane waiting time  : ");
-            System.out.println("Average plane waiting time  : ");
-            System.out.println("Number of Planes Served     : " + planesServed);
-            System.out.println("Number of Passengers Boarded: " + passengerBoarded);
+            System.out.println("Minimum plane waiting time  : " + this.minWaitingTime + " ms");
+            System.out.println("Maximum plane waiting time  : " + this.maxWaitingTime + " ms");
+            System.out.println("Average plane waiting time  : " + (this.totalWaitingTime / this.planesServed) + " ms");
+            System.out.println("Number of Planes Served     : " + this.planesServed);
+            System.out.println("Number of Passengers Boarded: " + this.passengerBoarded);
         }
     }
 }

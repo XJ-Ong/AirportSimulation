@@ -6,7 +6,7 @@ public class MainThread
         System.out.println("--- Asia Pacific Airport Simulation (Semaphore Version) ---");
 
         // one ATC thread
-        ATC apAtc = new ATC(3);
+        ATC apAtc = new ATC(3, 6);
         Thread atcThread = new Thread(apAtc, "AP_ATC");
         atcThread.start();
 
@@ -14,7 +14,7 @@ public class MainThread
         for (int i = 0; i < 6; i++)
         {
             int passengers = (int) (Math.random() * 51);   // random passenger count, 0-50
-            Plane plane = new Plane(i, passengers, apAtc);
+            Plane plane = new Plane(i + 1, passengers, apAtc);
             Thread planeThread = new Thread(plane, "Plane-" + (i + 1));
             planeThread.start();
 

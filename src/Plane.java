@@ -6,13 +6,18 @@ public class Plane implements Runnable
     private boolean isLanding = true;
     private boolean isEmergency;
 
+    // timestamps to calculate waiting time
+    private long landingStart;
+    private long landingEnd;
+    private long departingStart;
+    private long departingEnd;
+
     public Plane(int planeID, int passengerCount, ATC atc)
     {
         this.planeID = planeID;
         this.passengerCount = passengerCount;
         this.atc = atc;
-        this.isEmergency = planeID == 4;
-        atc.registerPlane();
+        this.isEmergency = planeID == 5;
     }
 
     public int getPlaneID()
@@ -45,10 +50,12 @@ public class Plane implements Runnable
     {
         synchronized (this)
         {
+            this.landingStart = System.currentTimeMillis();
             if (getIsEmergency())
             {
-                System.out.println(Thread.currentThread().getName() + ": Requesting emergency landing!");
-            } else
+                System.out.println(Thread.currentThread().getName() + ": Requesting EMERGENCY landing!");
+            }
+            else
             {
                 System.out.println(Thread.currentThread().getName() + ": Requesting landing...");
             }
@@ -57,10 +64,12 @@ public class Plane implements Runnable
             try
             {
                 wait();
-            } catch (InterruptedException e)
+            }
+            catch (InterruptedException e)
             {
                 throw new RuntimeException(e);
             }
+            this.landingEnd = System.currentTimeMillis();
         }
 
         // landing on runway
@@ -92,6 +101,7 @@ public class Plane implements Runnable
         this.setLanding(false);
         synchronized (this)
         {
+            this.departingStart = System.currentTimeMillis();
             atc.requestDeparting(this);
             try
             {
@@ -101,6 +111,7 @@ public class Plane implements Runnable
             {
                 throw new RuntimeException(e);
             }
+            this.departingEnd = System.currentTimeMillis();
         }
 
         atc.acquireRunway();
@@ -108,6 +119,8 @@ public class Plane implements Runnable
         System.out.println(Thread.currentThread().getName() + ": Departing on runway...");
         System.out.println(Thread.currentThread().getName() + ": Departed Successfully...");
         atc.releaseRunway();
+        long waitTime = (this.landingEnd - this.landingStart) + (this.departingEnd - this.departingStart);
+        atc.reportWaitingTime(waitTime);
         atc.planeFinished();
     }
 }
