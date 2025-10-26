@@ -18,7 +18,7 @@ public class ATC implements Runnable
     private long minWaitingTime = Long.MAX_VALUE;
     private long maxWaitingTime = Long.MIN_VALUE;
 
-    // Landing and Departing Queues
+    // landing and departing Queues
     private final Queue<Plane> landingQueue = new LinkedList<>();
     private final Queue<Plane> departingQueue = new LinkedList<>();
 
@@ -34,7 +34,7 @@ public class ATC implements Runnable
     {
         if(plane.getIsEmergency())
         {
-            ((LinkedList<Plane>) landingQueue).addFirst(plane); // Implementing Deque for First-In-Last-Out
+            ((LinkedList<Plane>) landingQueue).addFirst(plane); // implementing Deque to cut the queue
         }
         else
         {
@@ -82,7 +82,6 @@ public class ATC implements Runnable
         {
             return landingQueue.poll();
         }
-
         return null;
     }
 
@@ -101,7 +100,6 @@ public class ATC implements Runnable
             {
                 while (gate.availablePermits() == 0 || runwayOccupied)
                 {
-                    System.out.println(Thread.currentThread().getName() + ": All the gates or runway occupied");
                     try
                     {
                         wait();
@@ -298,7 +296,7 @@ public class ATC implements Runnable
     {
         System.out.println(Thread.currentThread().getName() + ": ATC has started operating");
 
-        // Handles landing and departing of planes
+        // landing and departing of planes
         while (!isFinished)
         {
             Plane nextPlane = getNextPlane();
