@@ -3,7 +3,7 @@ public class MainThread
 
     public static void main(String[] args)
     {
-        System.out.println("--- Asia Pacific Airport Simulation (Semaphore Version) ---");
+        System.out.println("--- Asia Pacific Airport Simulation ---");
 
         // one ATC thread
         ATC apAtc = new ATC(3, 6);

@@ -5,12 +5,26 @@ public class Plane implements Runnable
     private final ATC atc;
     private boolean isLanding = true;
     private boolean isEmergency;
+    private int gateNumber = -1;
 
     // timestamps to calculate waiting time
     private long landingStart;
     private long landingEnd;
     private long departingStart;
     private long departingEnd;
+
+    private void delay(int weightage)
+    {
+        int randomDelay = (int) (Math.random() * (1000 + 1)) + 1000;
+        randomDelay = randomDelay * weightage;
+        try
+        {
+            Thread.sleep(randomDelay); // if weightage = 1, sleep randomly between 0.5 to 1 second
+        } catch (InterruptedException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
 
     public Plane(int planeID, int passengerCount, ATC atc)
     {
@@ -45,6 +59,16 @@ public class Plane implements Runnable
         this.isLanding = bool;
     }
 
+    public void setGateNumber(int gateNumber)
+    {
+        this.gateNumber = gateNumber;
+    }
+
+    public int getGateNumber()
+    {
+        return this.gateNumber;
+    }
+
     @Override
     public void run()
     {
@@ -72,16 +96,18 @@ public class Plane implements Runnable
             this.landingEnd = System.currentTimeMillis();
         }
 
-        // landing on runway
+        // landing
         atc.acquireRunway();
         System.out.println(Thread.currentThread().getName() + ": Landing on runway...");
+        this.delay(1);
         atc.releaseRunway();
 
         // coasting to gate
-        int gateNumber = atc.acquireGate();
-        System.out.println(Thread.currentThread().getName() + ": Docked at Gate-" + gateNumber);
+        this.delay(1);
+        System.out.println(Thread.currentThread().getName() + ": Docked at Gate-" + this.getGateNumber());
 
         System.out.println(Thread.currentThread().getName() + ": " + this.passengerCount + " passengers disembarking...");
+        this.delay(1);
         atc.updatePassengersBoarded(this.passengerCount);
 
         this.setPassengerCount(0);
@@ -91,11 +117,13 @@ public class Plane implements Runnable
 
         atc.acquireFuelTruck();
         System.out.println(Thread.currentThread().getName() + ": Refuelling...");
+        this.delay(2);  // refuelling taking more time to simulate shared resource
         System.out.println(Thread.currentThread().getName() + ": Refuelling done");
         atc.releaseFuelTruck();
 
-        System.out.println(Thread.currentThread().getName() + ": Receiving new passengers");
         this.setPassengerCount((int) (Math.random() * 51));
+        System.out.println(Thread.currentThread().getName() + ": " + this.passengerCount + " passengers boarding...");
+        this.delay(1);
 
         // obtain departing permission
         this.setLanding(false);
@@ -114,11 +142,16 @@ public class Plane implements Runnable
             this.departingEnd = System.currentTimeMillis();
         }
 
+        // departing
         atc.acquireRunway();
-        atc.releaseGate(gateNumber);      // release gate after acquiring runway for safe departing
+        this.delay(1);
+        atc.releaseGate(this.getGateNumber());      // release gate after acquiring runway for safe departing
         System.out.println(Thread.currentThread().getName() + ": Departing on runway...");
+        this.delay(1);
         System.out.println(Thread.currentThread().getName() + ": Departed Successfully...");
         atc.releaseRunway();
+
+        // update ATC statistics
         long waitTime = (this.landingEnd - this.landingStart) + (this.departingEnd - this.departingStart);
         atc.reportWaitingTime(waitTime);
         atc.planeFinished();

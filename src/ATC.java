@@ -77,10 +77,13 @@ public class ATC implements Runnable
         {
             return departingQueue.poll();
         }
-        else
+
+        if (!landingQueue.isEmpty() && this.gate.availablePermits() > 0)
         {
             return landingQueue.poll();
         }
+
+        return null;
     }
 
     public void handlePlane(Plane plane)
@@ -93,24 +96,60 @@ public class ATC implements Runnable
         // differentiate between landing and departing
         if (plane.getIsLanding())
         {
-            // check gate availability
+            // check gate and runway availability
             synchronized (this)
             {
-                while (gate.availablePermits() == 0)
+                while (gate.availablePermits() == 0 || runwayOccupied)
                 {
-                    System.out.println(Thread.currentThread().getName() + ": All the gates are occupied");
+                    System.out.println(Thread.currentThread().getName() + ": All the gates or runway occupied");
                     try
                     {
                         wait();
-                    } catch (InterruptedException e)
+                    }
+                    catch (InterruptedException e)
                     {
                         Thread.currentThread().interrupt();
                         return;
                     }
                 }
-                System.out.println(Thread.currentThread().getName() + ": Runway is cleared");
+                // acquire gate
+                try
+                {
+                    gate.acquire();
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+
+                // gets the available gate number
+                int gateNumber = -1;
+                synchronized (this)
+                {
+                    for (int i = 0; i < gateOccupied.length; i++)
+                    {
+                        if (!gateOccupied[i])
+                        {
+                            gateOccupied[i] = true;
+                            gateNumber = i + 1;
+                            break;
+                        }
+                    }
+                }
+
+                if (gateNumber != -1)
+                {
+                    plane.setGateNumber(gateNumber);
+                    System.out.println(Thread.currentThread().getName() + ": Landing Permission granted for Plane-" + plane.getPlaneID());
+                    System.out.println(Thread.currentThread().getName() + ": Gate-" + gateNumber + " is assigned for Plane-" + plane.getPlaneID());
+                }
+                else
+                {
+                    gate.release();
+                }
+                notifyAll();
             }
-            System.out.println(Thread.currentThread().getName() + ": Landing permission granted for Plane-" + plane.getPlaneID());
         }
         else
         {
@@ -122,16 +161,16 @@ public class ATC implements Runnable
                     try
                     {
                         wait();
-                    } catch (InterruptedException e)
+                    }
+                    catch (InterruptedException e)
                     {
                         Thread.currentThread().interrupt();
                         return;
                     }
                 }
+                System.out.println(Thread.currentThread().getName() + ": Taking-off permission granted for Plane-" + plane.getPlaneID());
             }
-            System.out.println(Thread.currentThread().getName() + ": Taking-off permission granted for Plane-" + plane.getPlaneID());
         }
-
         synchronized (plane)
         {
             plane.notify();
@@ -198,54 +237,14 @@ public class ATC implements Runnable
         }
     }
 
-    public int acquireGate()
-    {
-        try
-        {
-            gate.acquire();
-        }
-        catch (InterruptedException e)
-        {
-            Thread.currentThread().interrupt();
-            return -1;
-        }
-
-        // gets the available gate number
-
-        int gateNumber = -1;
-        synchronized (this)
-        {
-            for (int i = 0; i < gateOccupied.length; i++)
-            {
-                if (!gateOccupied[i])
-                {
-                    gateOccupied[i] = true;
-                    gateNumber = i + 1;
-                    break;
-                }
-            }
-        }
-
-        //
-        if (gateNumber == -1)
-        {
-            gate.release();
-            return -1;
-        }
-        return gateNumber;
-    }
-
     public void releaseGate(int gateNumber)
     {
         synchronized (this)
         {
             gateOccupied[gateNumber - 1] = false;
-        }
-        gate.release();
-        synchronized (this)
-        {
             notifyAll();
         }
+        gate.release();
     }
 
     public void updatePassengersBoarded(int count)
@@ -314,7 +313,7 @@ public class ATC implements Runnable
         // sanity check & statistics
         if (!this.sanityCheck())
         {
-            System.out.println("Something has gone wrong");
+            System.out.println("Something had gone wrong");
         }
         else
         {
